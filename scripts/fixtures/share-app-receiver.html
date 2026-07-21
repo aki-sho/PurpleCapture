@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <title>PurpleCaptureAppReceiverTest</title>
+    <link rel="stylesheet" href="../src/share.css">
+  </head>
+  <body>
+    <main class="share-shell">
+      <canvas id="share-canvas" width="2" height="2"></canvas>
+      <video id="share-video" autoplay playsinline muted></video>
+      <section id="share-empty" class="share-empty">
+        <h1>receiver test</h1>
+        <div class="share-start-actions">
+          <select id="share-browser"><option value="default">default</option></select>
+          <button id="launch-browser-share">launch</button>
+        </div>
+        <p id="waiting-message" class="hidden"></p>
+      </section>
+      <header id="share-controls" class="hidden"><strong id="shared-title"></strong></header>
+      <div id="recording-badge" class="hidden"></div>
+      <div id="share-error" class="hidden"></div>
+      <footer id="audio-note" class="hidden"></footer>
+      <button id="change-share" class="hidden"></button>
+      <button id="stop-share-window" class="hidden"></button>
+      <button id="use-share" class="hidden"></button>
+    </main>
+    <script>
+      const parameters = new URLSearchParams(location.search);
+      const session = {
+        apiBase: parameters.get("api"),
+        token: parameters.get("token"),
+        senderUrl: ""
+      };
+      let callbackId = 0;
+      const callbacks = new Map();
+      window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener() {} };
+      window.__TAURI_INTERNALS__ = {
+        transformCallback(callback) {
+          callbackId += 1;
+          callbacks.set(callbackId, callback);
+          return callbackId;
+        },
+        unregisterCallback(id) { callbacks.delete(id); },
+        async invoke(command, argumentsValue) {
+          if (command === "share_session_info") return session;
+          if (command === "share_browser_options") {
+            return [{ id: "default", name: "default", available: true }];
+          }
+          if (command === "share_report_state") {
+            window.__shareReport = argumentsValue.report;
+            return argumentsValue.report;
+          }
+          if (command === "plugin:event|listen") return 1;
+          if (command === "plugin:event|unlisten") return null;
+          if (command === "share_focus_main") return null;
+          throw new Error(`Unexpected mock command: ${command}`);
+        }
+      };
+    </script>
+    <script type="module" src="../build/frontend/share.js"></script>
+  </body>
+</html>

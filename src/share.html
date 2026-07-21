@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src ipc: http://ipc.localhost http://127.0.0.1:*; media-src 'self' blob:; style-src 'self'; script-src 'self'; img-src 'self' data:; frame-src 'none'; object-src 'none'; base-uri 'none'" />
+    <title>Purple Capture - タブ共有</title>
+    <link rel="stylesheet" href="./share.css" />
+  </head>
+  <body>
+    <main class="share-shell">
+      <canvas id="share-canvas" width="2" height="2" aria-label="共有映像プレビュー"></canvas>
+      <video id="share-video" autoplay playsinline muted aria-hidden="true"></video>
+
+      <section id="share-empty" class="share-empty">
+        <div class="share-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 22h8M12 18v4M9 9l3-3 3 3M12 6v7"/></svg>
+        </div>
+        <p class="eyebrow">BROWSER TAB SHARE</p>
+        <h1>録画するタブを共有</h1>
+        <p class="description">
+          共有に使うブラウザだけをここで選びます。録画するタブは、
+          開いたブラウザの共有画面で手動選択してください。
+        </p>
+        <div class="share-start-actions">
+          <label class="browser-choice">
+            <span>共有に使うブラウザ</span>
+            <select id="share-browser" aria-label="共有に使うブラウザ">
+              <option value="default">既定のブラウザ</option>
+            </select>
+          </label>
+          <button id="launch-browser-share" class="button primary">このブラウザで共有する</button>
+        </div>
+        <p id="waiting-message" class="waiting-message hidden">外部ブラウザでタブが選択されるのを待っています…</p>
+        <p class="notice">共有対象の選択は、開いた外部ブラウザ側で行います。</p>
+      </section>
+
+      <header id="share-controls" class="share-controls hidden">
+        <div class="share-title">
+          <span class="live-dot"></span>
+          <div><small>共有中</small><strong id="shared-title">共有タブ</strong></div>
+        </div>
+        <div class="share-actions">
+          <button id="change-share" class="button secondary">共有ページを表示</button>
+          <button id="use-share" class="button primary">録画画面へ</button>
+          <button id="stop-share-window" class="button danger">共有停止</button>
+        </div>
+      </header>
+
+      <div id="recording-badge" class="recording-badge hidden">
+        <span></span>REC
+      </div>
+      <div id="share-error" class="share-error hidden" role="alert"></div>
+      <footer id="audio-note" class="audio-note hidden">
+        音声はPurple Captureの「システム音声」設定からWASAPIで録音されます。
+      </footer>
+    </main>
+    <script type="module" src="./share.js"></script>
+  </body>
+</html>

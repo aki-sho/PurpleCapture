@@ -1,0 +1,75 @@
+<!doctype html>
+<html>
+  <head><meta charset="utf-8"><title>PurpleCaptureSyntheticSender</title></head>
+  <body>
+    <canvas id="source" width="1280" height="720"></canvas>
+    <pre id="result">starting</pre>
+    <script>
+      const parameters = new URLSearchParams(location.search);
+      const api = parameters.get("api");
+      const token = parameters.get("token");
+      const canvas = document.querySelector("#source");
+      const context = canvas.getContext("2d");
+      const result = document.querySelector("#result");
+      let tick = 0;
+      setInterval(() => {
+        tick += 1;
+        context.fillStyle = "#241135";
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        context.fillStyle = "#8b5cf6";
+        context.fillRect(100 + tick % 400, 100, 700, 400);
+        context.fillStyle = "#ffffff";
+        context.font = "bold 80px sans-serif";
+        context.fillText("PURPLE CAPTURE", 180, 340);
+      }, 33);
+
+      async function request(path, method = "GET", body = null) {
+        const response = await fetch(`${api}/${path}/${token}`, {
+          method,
+          headers: body ? { "Content-Type": "application/json" } : undefined,
+          body: body ? JSON.stringify(body) : undefined,
+          cache: "no-store"
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      }
+
+      function waitForIce(connection) {
+        if (connection.iceGatheringState === "complete") return Promise.resolve();
+        return new Promise((resolve) => {
+          connection.addEventListener("icegatheringstatechange", () => {
+            if (connection.iceGatheringState === "complete") resolve();
+          });
+          setTimeout(resolve, 3000);
+        });
+      }
+
+      async function start() {
+        const stream = canvas.captureStream(30);
+        const peer = new RTCPeerConnection({ iceServers: [] });
+        peer.addTrack(stream.getVideoTracks()[0], stream);
+        const offer = await peer.createOffer();
+        await peer.setLocalDescription(offer);
+        await waitForIce(peer);
+        await request("offer", "POST", {
+          sdp: peer.localDescription.sdp,
+          title: "Synthetic visible source",
+          displaySurface: "browser",
+          width: canvas.width,
+          height: canvas.height
+        });
+        for (let attempt = 0; attempt < 100; attempt += 1) {
+          const state = await request("session");
+          if (state.answer) {
+            await peer.setRemoteDescription({ type: "answer", sdp: state.answer });
+            result.textContent = "connected";
+            return;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+        throw new Error("answer timeout");
+      }
+      start().catch((error) => { result.textContent = `error: ${error.message}`; });
+    </script>
+  </body>
+</html>

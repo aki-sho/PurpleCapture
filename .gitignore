@@ -1,0 +1,17 @@
+node_modules/
+build/frontend/
+dist/
+src-tauri/target/
+.devdata/
+.cache/
+.tmp/
+*.log
+**/PurpleCapture-PortableData/
+*.mp4
+*.mp4.part
+*.webm
+.env
+.env.*
+!.env.example
+src-tauri/binaries/*.exe
+src-tauri/binaries/*.dll

@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>Purple Capture タブ共有</title>
+    <link rel="stylesheet" href="/sender.css" />
+  </head>
+  <body>
+    <main>
+      <video id="preview" autoplay playsinline muted></video>
+      <section id="welcome" class="welcome">
+        <div class="mark">◉</div>
+        <p class="eyebrow">PURPLE CAPTURE</p>
+        <h1>ブラウザタブを共有</h1>
+        <p>
+          下のボタンを押し、ブラウザの共有画面から録画するタブを選択してください。
+          共有映像はローカルのPurple Captureだけへ送られます。
+        </p>
+        <button id="start" class="primary">共有するタブを選択</button>
+        <small>このページは共有中、そのまま開いておいてください。</small>
+      </section>
+      <header id="toolbar" class="toolbar hidden">
+        <div><span></span><strong id="title">共有タブ</strong></div>
+        <div class="actions">
+          <button id="change">共有を変更</button>
+          <button id="stop" class="danger">共有を停止</button>
+        </div>
+      </header>
+      <div id="status" class="status hidden">Purple Captureへ接続中…</div>
+      <div id="error" class="error hidden" role="alert"></div>
+    </main>
+    <script src="/sender.js"></script>
+  </body>
+</html>

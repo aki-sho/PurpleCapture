@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="ja">
+  <head><meta charset="utf-8"><title>PurpleCaptureRelayReceiver</title></head>
+  <body>
+    <video id="preview" autoplay playsinline muted></video>
+    <pre id="result">waiting</pre>
+    <script>
+      const parameters = new URLSearchParams(location.search);
+      const api = parameters.get("api");
+      const token = parameters.get("token");
+      const result = document.querySelector("#result");
+      const video = document.querySelector("#preview");
+      let peer;
+
+      async function request(path, method = "GET", body = null) {
+        const response = await fetch(`${api}/${path}/${token}`, {
+          method,
+          headers: body ? { "Content-Type": "application/json" } : undefined,
+          body: body ? JSON.stringify(body) : undefined,
+          cache: "no-store"
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      }
+
+      function waitForIce(connection) {
+        if (connection.iceGatheringState === "complete") return Promise.resolve();
+        return new Promise((resolve) => {
+          connection.addEventListener("icegatheringstatechange", () => {
+            if (connection.iceGatheringState === "complete") resolve();
+          });
+          setTimeout(resolve, 3000);
+        });
+      }
+
+      async function start() {
+        const state = await request("session");
+        if (!state.offer) {
+          setTimeout(start, 100);
+          return;
+        }
+        peer = new RTCPeerConnection({ iceServers: [] });
+        peer.addEventListener("track", async (event) => {
+          video.srcObject = event.streams[0] || new MediaStream([event.track]);
+          await video.play();
+          await new Promise((resolve) => video.requestVideoFrameCallback(resolve));
+          const canvas = document.createElement("canvas");
+          canvas.width = 64;
+          canvas.height = 64;
+          const context = canvas.getContext("2d", { willReadFrequently: true });
+          context.drawImage(video, 0, 0, 64, 64);
+          const pixels = context.getImageData(0, 0, 64, 64).data;
+          let visiblePixels = 0;
+          let peak = 0;
+          for (let index = 0; index < pixels.length; index += 4) {
+            const value = Math.max(pixels[index], pixels[index + 1], pixels[index + 2]);
+            if (value > 16) visiblePixels += 1;
+            peak = Math.max(peak, value);
+          }
+          result.textContent = JSON.stringify({
+            received: true,
+            width: video.videoWidth,
+            height: video.videoHeight,
+            visiblePixels,
+            peak
+          });
+        });
+        await peer.setRemoteDescription({ type: "offer", sdp: state.offer });
+        const answer = await peer.createAnswer();
+        await peer.setLocalDescription(answer);
+        await waitForIce(peer);
+        await request("answer", "POST", { sdp: peer.localDescription.sdp });
+      }
+
+      start().catch((error) => { result.textContent = JSON.stringify({ error: error.message }); });
+    </script>
+  </body>
+</html>
