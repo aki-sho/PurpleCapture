@@ -1,9 +1,20 @@
 # Purple Capture
 
-Purple Capture はWindows 10・11（64ビット）向けのポータブル画面録画アプリです。
-モニター、開いているアプリウィンドウ、外部ブラウザで共有したタブを選び、
-H.264/MP4で録画できます。Tauri 2、Rust、Vanilla JavaScript、WebView2で構成し、
-FFmpegなどの外部EXEには依存しません。
+![Version](https://img.shields.io/badge/version-1.0.0-7C3AED?style=flat-square)
+![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?style=flat-square&logo=windows11&logoColor=white)
+![Tauri](https://img.shields.io/badge/Tauri-2-FFC131?style=flat-square&logo=tauri&logoColor=111827)
+![Rust](https://img.shields.io/badge/Rust-stable-CE422B?style=flat-square&logo=rust&logoColor=white)
+![JavaScript](https://img.shields.io/badge/JavaScript-Vanilla-F7DF1E?style=flat-square&logo=javascript&logoColor=111827)
+![Video](https://img.shields.io/badge/Video-H.264%20%2F%20MP4-22C55E?style=flat-square)
+![Portable](https://img.shields.io/badge/Portable-supported-8B5CF6?style=flat-square)
+![FFmpeg](https://img.shields.io/badge/FFmpeg-not%20required-4B5563?style=flat-square)
+
+**Purple Capture** は、Windows 10・11（64ビット）向けのポータブル画面録画アプリです。
+
+モニター、開いているアプリウィンドウ、Chrome／Edgeで共有したブラウザタブを選択し、H.264／MP4形式で録画できます。
+
+Tauri 2、Rust、Vanilla JavaScript、WebView2で構成されており、FFmpegなどの外部EXEには依存しません。
+
 
 ## 主な機能
 
@@ -51,48 +62,148 @@ Chrome／Edgeなどで行い、録画したいタブだけをブラウザ標準�
 
 ブラウザタブの音声を録音する場合は、「システム音声」をオンにしてください。
 
+## 録画対象
+
+Purple Captureでは、次の録画対象を選択できます。
+
+- 接続されているモニター
+- 現在開いているアプリウィンドウ
+- Chrome／Edgeで共有したブラウザタブ
+
+内蔵ブラウザや専用のWebブラウザ機能はありません。
+
+Webサイトの閲覧は普段利用しているChrome／Edgeなどで行い、録画したいタブだけをブラウザ標準の共有画面から選択します。
+
+## ブラウザタブ録画の仕組み
+
+ブラウザタブの共有には、Chrome／Edgeの`getDisplayMedia()`を使用します。
+
+Purple Capture内には共有対象の選択画面を表示せず、外部ブラウザで選択されたタブ映像を受信します。
+
+共有映像は、共有中のみ起動する`127.0.0.1`のシグナリングサーバーと、ローカルWebRTC接続を通じて専用プレビューへ送信されます。
+
+ランダムトークンを持たない接続は、共有セッションへアクセスできません。
+
+映像フレームをJavaScriptからRustへ逐次送信する方式ではなく、共有映像をCPU Canvasへ合成した専用プレビューをWindows.Graphics.Captureで録画します。
+
+音声は共有ストリームから取得せず、メイン画面の「システム音声」設定に従ってWASAPIで録音します。
+
+## 技術構成
+
+| 項目 | 使用技術 |
+|---|---|
+| デスクトップ基盤 | Tauri 2 |
+| バックエンド | Rust |
+| フロントエンド | Vanilla JavaScript |
+| WebView | Microsoft Edge WebView2 |
+| 画面取得 | Windows.Graphics.Capture |
+| 動画エンコード | Media Foundation |
+| 音声取得 | WASAPI |
+| ブラウザ共有 | WebRTC／getDisplayMedia |
+| 出力形式 | H.264／MP4 |
+
+## 必要環境
+
+開発には次の環境が必要です。
+
+- Windows 10／11（64ビット）
+- Node.js 20以降
+- Rust stable
+- MSVC toolchain
+- Microsoft Edge WebView2 Runtime
+- Visual Studio Build ToolsのC++構成
+
 ## 開発
 
-必要環境はWindows 10/11、Node.js 20以降、Rust stable（MSVC toolchain）、
-Microsoft Edge WebView2 Runtime、Visual Studio Build ToolsのC++構成です。
+依存パッケージをインストールします。
 
 ```powershell
 npm install
+```
+
+開発環境を起動します。
+
+```powershell
 npm start
 ```
 
-開発時のデータは `.devdata/PurpleCapture-PortableData/` に保存されます。
+開発時のデータは、次のフォルダに保存されます。
+
+```text
+.devdata/PurpleCapture-PortableData/
+```
 
 ## 検査とビルド
 
+コードと設定を検査します。
+
 ```powershell
 npm run check
+```
+
+ポータブル版を作成します。
+
+```powershell
 npm run package:portable
+```
+
+ポータブル版とインストール版をまとめて作成します。
+
+```powershell
 npm run release:portable
 ```
 
-`release:portable` はポータブル版と現在のユーザー向けNSISインストール版を作り、
-`dist/` に次の6ファイルを生成します。
+## 配布ファイル
 
-- `PurpleCapture-Portable-1.0.0.exe`
-- `PurpleCapture-Portable-1.0.0.exe.sha256`
-- `PurpleCapture-Portable-1.0.0.zip`
-- `PurpleCapture-Portable-1.0.0.zip.sha256`
-- `PurpleCapture-Setup-1.0.0.exe`
-- `PurpleCapture-Setup-1.0.0.exe.sha256`
+`npm run release:portable`を実行すると、`dist/`に次のファイルが生成されます。
 
-Setup版はWindowsのアンインストール情報とスタートメニュー項目を登録します。
-レジストリ登録を避けたい場合はポータブル版を使用してください。
+```text
+dist/
+├─ PurpleCapture-Portable-1.0.0.exe
+├─ PurpleCapture-Portable-1.0.0.exe.sha256
+├─ PurpleCapture-Portable-1.0.0.zip
+├─ PurpleCapture-Portable-1.0.0.zip.sha256
+├─ PurpleCapture-Setup-1.0.0.exe
+└─ PurpleCapture-Setup-1.0.0.exe.sha256
+```
 
-SHA-256はPowerShellの
-`Get-FileHash .\dist\PurpleCapture-Portable-1.0.0.zip -Algorithm SHA256`
-で確認できます。
+### ポータブル版
+
+レジストリ登録やインストールを行わず、展開したフォルダから起動できます。
+
+### Setup版
+
+現在のWindowsユーザー向けにインストールされ、次の情報を登録します。
+
+- Windowsのアンインストール情報
+- スタートメニュー項目
+
+レジストリ登録を避けたい場合は、ポータブル版を使用してください。
+
+## SHA-256の確認
+
+PowerShellから次のコマンドを実行します。
+
+```powershell
+Get-FileHash .\dist\PurpleCapture-Portable-1.0.0.zip -Algorithm SHA256
+```
+
+表示されたハッシュ値と、配布されている`.sha256`ファイルの内容を比較してください。
 
 ## ポータブルデータ
 
-配布版ではEXEと同じフォルダに `PurpleCapture-PortableData/` を作り、設定、
-録画、ログ、WebView2データ、Cookie、localStorage、IndexedDB、一時ファイルを
-保存します。`Program Files`など書き込みできない場所には置かないでください。
+配布版では、実行ファイルと同じ場所に`PurpleCapture-PortableData/`を作成します。
+
+このフォルダには、次のデータが保存されます。
+
+- アプリ設定
+- 録画ファイル
+- ログ
+- WebView2データ
+- Cookie
+- localStorage
+- IndexedDB
+- 一時ファイル
 
 ```text
 PurpleCapture-PortableData/
@@ -107,23 +218,52 @@ PurpleCapture-PortableData/
    └─ bin/
 ```
 
+`Program Files`など、通常ユーザーが書き込めない場所には配置しないでください。
+
 ## ソース構成
 
-- `src/`: メインUI、外部ブラウザ共有、録画、履歴、設定
-- `src-tauri/src/`: Rustコマンド、録画、音声、パス、終了処理
-- `scripts/`: メタデータ同期、検査、ポータブル配布
-- `.github/workflows/`: Windows手動検査
+```text
+PurpleCapture/
+├─ src/
+├─ src-tauri/
+│  └─ src/
+├─ scripts/
+├─ assets/
+├─ build/
+├─ dist/
+└─ .github/
+   └─ workflows/
+```
+
+| フォルダ | 内容 |
+|---|---|
+| `src/` | メインUI、外部ブラウザ共有、録画、履歴、設定 |
+| `src-tauri/src/` | Rustコマンド、録画、音声、パス、終了処理 |
+| `scripts/` | メタデータ同期、検査、ポータブル配布 |
+| `assets/` | アプリで使用する画像など |
+| `build/` | ビルド関連ファイル |
+| `dist/` | 生成された配布ファイル |
+| `.github/workflows/` | Windows環境での手動検査 |
 
 ## 外部ライブラリとバイナリ
 
-依存ライブラリは `package-lock.json` と `src-tauri/Cargo.lock` に固定します。
-外部メディアバイナリやsidecarは使用しません。Windows標準のMedia Foundation
-H.264 encoder availabilityはPC構成に依存します。
+JavaScriptの依存ライブラリは`package-lock.json`、Rustの依存ライブラリは`src-tauri/Cargo.lock`に固定されています。
 
-## 公開前
+外部メディアバイナリやsidecarは使用していません。
 
-- 本体ライセンスを決定し、`LICENSE`を差し替える
-- npm/Cargo依存ライセンスとH.264の配布条件を法務確認する
-- 署名用証明書でEXEへコード署名する
-- 実機で複数GPU、複数モニター、各種音声デバイス、長時間録画を検証する
-- `npm audit`、Rust依存監査、マルウェアスキャンを実行する
+Windows標準のMedia Foundation H.264 Encoderが使用可能かどうかは、PCのWindowsエディションや構成によって異なる場合があります。
+
+## 公開前チェック
+
+- [ ] 本体ライセンスを決定し、`LICENSE`を差し替える
+- [ ] npm依存ライブラリのライセンスを確認する
+- [ ] Cargo依存ライブラリのライセンスを確認する
+- [ ] H.264に関する配布条件を確認する
+- [ ] 署名用証明書でEXEへコード署名する
+- [ ] 複数GPU環境で録画を検証する
+- [ ] 複数モニター環境で録画を検証する
+- [ ] 各種音声デバイスで録音を検証する
+- [ ] 長時間録画を検証する
+- [ ] `npm audit`を実行する
+- [ ] Rust依存ライブラリの監査を実行する
+- [ ] 配布ファイルのマルウェアスキャンを実行する
