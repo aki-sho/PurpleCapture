@@ -24,7 +24,7 @@ for (const name of ["LICENSE", "THIRD_PARTY_NOTICES.md", "THIRD_PARTY_LICENSES.t
 for (const asset of [names.exe, names.setup]) {
   const file = path.join(root, "dist", asset).replaceAll("'", "''");
   const verification = spawnSync("powershell.exe", ["-NoProfile", "-Command",
-    `$s = Get-AuthenticodeSignature -LiteralPath '${file}'; if ($s.Status -ne 'Valid' -or $null -eq $s.TimeStamperCertificate) { Write-Error 'A trusted, timestamped code signature is required for publication.'; exit 1 }; $s.SignerCertificate.Subject`
+    `$ErrorActionPreference = 'Stop'; Import-Module "$PSHOME\\Modules\\Microsoft.PowerShell.Security\\Microsoft.PowerShell.Security.psd1"; $s = Get-AuthenticodeSignature -LiteralPath '${file}'; if ($s.Status -ne 'Valid' -or $null -eq $s.TimeStamperCertificate) { throw "A trusted, timestamped code signature is required for publication. Status: $($s.Status)" }; $s.SignerCertificate.Subject`
   ], { encoding: "utf8" });
   if (verification.error) throw verification.error;
   if (verification.status !== 0) throw new Error(`Signature verification failed: ${asset}\n${verification.stderr}`);
