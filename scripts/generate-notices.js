@@ -52,5 +52,6 @@ if (missing.length) throw new Error(`Missing license texts (release blocked):\n$
 const installerLicense = path.join(root, "third-party/licenses/NSIS/COPYING");
 if (!fs.existsSync(installerLicense)) throw new Error("Missing NSIS license text");
 sections.push(`\n${"=".repeat(78)}\nNSIS installer runtime (zlib compression)\nSource: https://nsis.sourceforge.io/License\n\n${fs.readFileSync(installerLicense, "utf8")}\n`);
+sections.push(`\n${"=".repeat(78)}\nnsis-tauri-utils 0.5.3\nMIT license selected\nDLL SHA-1: 75197FEE3C6A814FE035788D1C34EAD39349B860\nLicense source: https://raw.githubusercontent.com/tauri-apps/nsis-tauri-utils/13d9edd27b69310e108d6fbd49f90992f8a05390/LICENSE_MIT\n\n${fs.readFileSync(path.join(root, "third-party/licenses/nsis-tauri-utils-0.5.3/LICENSE_MIT"), "utf8")}\n`);
 fs.writeFileSync(path.join(root, "THIRD_PARTY_LICENSES.txt"), sections.join(""));
 console.log(`Collected license texts for ${dependencies.length} components.`);
