@@ -2,6 +2,9 @@ name: Windows checks
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
 
 jobs:
   check:
@@ -14,6 +17,6 @@ jobs:
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
       - run: npm ci
-      - run: cargo check --manifest-path src-tauri/Cargo.toml
+      - run: npm run build:frontend
+      - run: cargo test --manifest-path src-tauri/Cargo.toml --locked
       - run: npm run check
-

@@ -5,6 +5,7 @@ mod models;
 mod portable_paths;
 mod process_manager;
 mod recording;
+mod recovery;
 mod settings;
 mod share;
 mod share_server;
@@ -86,6 +87,10 @@ pub fn run() {
             commands::list_capture_sources,
             commands::list_microphones,
             commands::recording_history,
+            commands::pending_recordings,
+            commands::retry_recording_save,
+            commands::open_recovery_folder,
+            commands::open_license_documents,
             commands::open_recording,
             commands::open_recordings_folder,
             commands::choose_save_folder,
@@ -147,10 +152,7 @@ pub fn run() {
                         share.close_all(&app);
                         paths.log("INFO", "Shutdown step: child processes");
                         processes.stop_all();
-                        paths.log("INFO", "Shutdown step: temporary files");
-                        if let Err(cause) = paths.cleanup_stale_working_files() {
-                            paths.log("ERROR", format!("Temporary cleanup failed: {cause:#}"));
-                        }
+                        // Unpublished recordings must survive shutdown and restart.
                         legacy_cleanup::remove_empty_default_appdata(&paths);
                         paths.log("INFO", "Shutdown step: app exit");
                         app.exit(0);

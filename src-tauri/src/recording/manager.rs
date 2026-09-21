@@ -1,6 +1,7 @@
 use super::{
     audio::AudioPipeline,
     capture::{CaptureFlags, CaptureHandler},
+    clock::RecordingClock,
 };
 use crate::{
     history::HistoryStore,
@@ -18,7 +19,7 @@ use std::{
         Arc,
         atomic::{AtomicBool, AtomicU64, Ordering},
     },
-    time::{Duration, Instant},
+    time::Duration,
 };
 use windows_capture::{
     capture::{CaptureControl, GraphicsCaptureApiHandler},
@@ -37,12 +38,9 @@ type Control = CaptureControl<CaptureHandler, anyhow::Error>;
 struct ActiveRecording {
     control: Option<Control>,
     audio: Option<AudioPipeline>,
-    paused: Arc<AtomicBool>,
+    clock: Arc<RecordingClock>,
     target_closed: Arc<AtomicBool>,
     captured_frames: Arc<AtomicU64>,
-    started: Instant,
-    pause_started: Option<Instant>,
-    paused_duration: Duration,
     source_id: String,
     target_name: String,
     working_path: PathBuf,
@@ -59,6 +57,7 @@ pub struct RecordingManager {
     paths: Arc<PortablePaths>,
     history: Arc<HistoryStore>,
     inner: Mutex<RecordingInner>,
+    operation: Mutex<()>,
 }
 
 impl RecordingManager {
@@ -70,6 +69,7 @@ impl RecordingManager {
                 active: None,
                 last_error: None,
             }),
+            operation: Mutex::new(()),
         }
     }
 
@@ -79,6 +79,7 @@ impl RecordingManager {
         source: ResolvedSource,
         save_directory: PathBuf,
     ) -> Result<RecordingStatus> {
+        let _operation = self.operation.lock();
         self.validate_request(&request)?;
         if self.inner.lock().active.is_some() {
             bail!("すでに録画中です。");
@@ -88,7 +89,10 @@ impl RecordingManager {
         }
         let timestamp = Local::now();
         let stem = format!("PurpleCapture_{}", timestamp.format("%Y-%m-%d_%H-%M-%S"));
-        let working_path = self.paths.working.join(format!("{stem}.mp4.part"));
+        let working_path = self
+            .paths
+            .working
+            .join(format!("{stem}_{}.mp4.part", uuid::Uuid::new_v4().simple()));
         let final_path = unique_path(save_directory.join(format!("{stem}.mp4")));
         let (width, height) = match &source {
             ResolvedSource::Monitor { width, height, .. }
@@ -131,12 +135,12 @@ impl RecordingManager {
         )
         .context("Media Foundation H.264/MP4エンコーダーを開始できません。")?;
         let encoder = Arc::new(Mutex::new(Some(encoder)));
-        let paused = Arc::new(AtomicBool::new(false));
+        let clock = Arc::new(RecordingClock::new());
         let target_closed = Arc::new(AtomicBool::new(false));
         let captured_frames = Arc::new(AtomicU64::new(0));
         let flags = CaptureFlags {
             encoder: encoder.clone(),
-            paused: paused.clone(),
+            clock: clock.clone(),
             target_closed: target_closed.clone(),
             captured_frames: captured_frames.clone(),
             target_width,
@@ -179,13 +183,12 @@ impl RecordingManager {
             request.system_audio,
             request.microphone,
             request.microphone_id,
-            paused.clone(),
+            clock.clone(),
             encoder,
         ) {
             Ok(audio) => audio,
             Err(cause) => {
                 let _ = control.stop();
-                let _ = fs::remove_file(&working_path);
                 return Err(cause);
             }
         };
@@ -196,12 +199,9 @@ impl RecordingManager {
         self.inner.lock().active = Some(ActiveRecording {
             control: Some(control),
             audio,
-            paused,
+            clock,
             target_closed,
             captured_frames,
-            started: Instant::now(),
-            pause_started: None,
-            paused_duration: Duration::ZERO,
             source_id: request.source.id,
             target_name: request.source.name,
             working_path,
@@ -214,10 +214,7 @@ impl RecordingManager {
     pub fn pause(&self) -> Result<RecordingStatus> {
         let mut inner = self.inner.lock();
         let active = inner.active.as_mut().context("録画中ではありません。")?;
-        if active.pause_started.is_none() {
-            active.paused.store(true, Ordering::Release);
-            active.pause_started = Some(Instant::now());
-        }
+        active.clock.pause();
         drop(inner);
         Ok(self.status())
     }
@@ -225,15 +222,13 @@ impl RecordingManager {
     pub fn resume(&self) -> Result<RecordingStatus> {
         let mut inner = self.inner.lock();
         let active = inner.active.as_mut().context("録画中ではありません。")?;
-        if let Some(started) = active.pause_started.take() {
-            active.paused_duration += started.elapsed();
-            active.paused.store(false, Ordering::Release);
-        }
+        active.clock.resume();
         drop(inner);
         Ok(self.status())
     }
 
     pub fn stop(&self) -> Result<RecordingStatus> {
+        let _operation = self.operation.lock();
         let active = self
             .inner
             .lock()
@@ -255,6 +250,7 @@ impl RecordingManager {
     }
 
     pub fn stop_for_shutdown(&self) {
+        let _operation = self.operation.lock();
         if let Some(active) = self.inner.lock().active.take() {
             if let Err(cause) = self.finalize(active, false) {
                 self.paths.log(
@@ -270,6 +266,7 @@ impl RecordingManager {
         source_id: &str,
         message: &str,
     ) -> Result<Option<RecordingStatus>> {
+        let _operation = self.operation.lock();
         let active = {
             let mut inner = self.inner.lock();
             if !inner
@@ -304,18 +301,11 @@ impl RecordingManager {
                 ..RecordingStatus::default()
             };
         };
-        let current_pause = active
-            .pause_started
-            .map(|value| value.elapsed())
-            .unwrap_or_default();
-        let elapsed = active
-            .started
-            .elapsed()
-            .saturating_sub(active.paused_duration + current_pause);
+        let elapsed = active.clock.elapsed();
         let elapsed_seconds = elapsed.as_secs();
         let audio_error = active.audio.as_ref().and_then(AudioPipeline::error);
         RecordingStatus {
-            state: if active.pause_started.is_some() {
+            state: if active.clock.is_paused() {
                 "paused".into()
             } else {
                 "recording".into()
@@ -327,6 +317,9 @@ impl RecordingManager {
     }
 
     fn reap_finished(&self) {
+        let Some(_operation) = self.operation.try_lock() else {
+            return;
+        };
         let should_reap = self.inner.lock().active.as_ref().is_some_and(|active| {
             active.target_closed.load(Ordering::Acquire)
                 || active
@@ -349,13 +342,13 @@ impl RecordingManager {
     }
 
     fn finalize(&self, mut active: ActiveRecording, already_finished: bool) -> Result<()> {
-        active.paused.store(false, Ordering::Release);
+        active.clock.stop();
         if let Some(audio) = active.audio.take() {
             audio.stop();
         }
         let control = active.control.take().context("録画制御がありません。")?;
         let callback = control.callback();
-        if already_finished {
+        if already_finished && control.is_finished() {
             control
                 .wait()
                 .context("録画スレッドの終了を確認できません。")?;
@@ -364,18 +357,21 @@ impl RecordingManager {
         }
         callback.lock().finish_encoder()?;
         let captured_frames = active.captured_frames.load(Ordering::Acquire);
-        let current_pause = active
-            .pause_started
-            .map(|value| value.elapsed())
-            .unwrap_or_default();
-        let elapsed = active
-            .started
-            .elapsed()
-            .saturating_sub(active.paused_duration + current_pause);
+        let elapsed = active.clock.elapsed();
         if !active.working_path.is_file() || fs::metadata(&active.working_path)?.len() == 0 {
             bail!("録画データが生成されませんでした。");
         }
-        move_completed_file(&active.working_path, &active.final_path)?;
+        // Only a finalized MP4 is offered for retry; .part files remain untouched.
+        let completed = active.working_path.with_extension("");
+        fs::rename(&active.working_path, &completed).with_context(|| {
+            format!(
+                "録画を確定済みとして登録できません。データは保持されています: {}",
+                active.working_path.display()
+            )
+        })?;
+        crate::recovery::publish(&completed, &active.final_path).with_context(|| {
+            format!("保存できませんでした。録画は保持されています。録画履歴の「未保存の録画」から再保存してください: {}", completed.display())
+        })?;
         let size = fs::metadata(&active.final_path)?.len();
         self.history.add(HistoryEntry {
             path: active.final_path.to_string_lossy().into_owned(),
@@ -433,22 +429,6 @@ fn unique_path(path: PathBuf) -> PathBuf {
         }
     }
     path
-}
-
-fn move_completed_file(source: &PathBuf, destination: &PathBuf) -> Result<()> {
-    if let Some(parent) = destination.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    match fs::rename(source, destination) {
-        Ok(()) => Ok(()),
-        Err(_) => {
-            fs::copy(source, destination).with_context(|| {
-                format!("録画を保存先へコピーできません: {}", destination.display())
-            })?;
-            fs::remove_file(source)?;
-            Ok(())
-        }
-    }
 }
 
 #[cfg(all(test, target_os = "windows"))]

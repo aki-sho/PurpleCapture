@@ -39,6 +39,14 @@ async function persist(patch) {
 
 export function initializeSettings() {
   reflectSettings();
+  const licenseButton = document.createElement("button");
+  licenseButton.className = "button secondary";
+  licenseButton.textContent = "利用条件・ライセンスを開く";
+  licenseButton.addEventListener("click", async () => {
+    try { await api.openLicenseDocuments(); }
+    catch (error) { showToast(String(error), "error"); }
+  });
+  document.querySelector("#page-settings").append(licenseButton);
   document.querySelector("#choose-save-path").addEventListener("click", async () => {
     try {
       const selected = await api.chooseSaveFolder();
@@ -56,4 +64,3 @@ export function initializeSettings() {
   document.querySelector("#system-audio").addEventListener("change", (event) => persist({ systemAudio: event.target.checked }));
   document.querySelector("#microphone").addEventListener("change", (event) => persist({ microphone: event.target.checked }));
 }
-

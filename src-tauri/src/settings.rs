@@ -25,11 +25,19 @@ impl SettingsStore {
             }
         };
         Self::validate(&value)?;
-        paths.ensure_absolute_directory(&value.save_directory)?;
-        value.save_directory = paths
-            .ensure_absolute_directory(&value.save_directory)?
-            .to_string_lossy()
-            .into_owned();
+        // A disconnected destination must not prevent access to retained recordings.
+        value.save_directory = match paths.ensure_absolute_directory(&value.save_directory) {
+            Ok(directory) => directory,
+            Err(cause) => {
+                paths.log(
+                    "WARN",
+                    format!("Save directory unavailable; using local recordings: {cause:#}"),
+                );
+                paths.recordings.clone()
+            }
+        }
+        .to_string_lossy()
+        .into_owned();
         let store = Self {
             paths,
             value: RwLock::new(value),

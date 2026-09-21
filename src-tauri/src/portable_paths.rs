@@ -47,6 +47,10 @@ impl PortablePaths {
                 .context("実行ファイルの親フォルダを取得できません。")?
                 .join("PurpleCapture-PortableData")
         };
+        Self::from_root(root)
+    }
+
+    fn from_root(root: PathBuf) -> Result<Arc<Self>> {
         let paths = Self {
             settings: root.join("settings"),
             data: root.join("data"),
@@ -75,7 +79,6 @@ impl PortablePaths {
                 .with_context(|| format!("フォルダを作成できません: {}", directory.display()))?;
         }
         paths.verify_writable()?;
-        paths.cleanup_stale_working_files()?;
         Ok(Arc::new(paths))
     }
 
@@ -88,21 +91,6 @@ impl PortablePaths {
             )
         })?;
         fs::remove_file(probe).ok();
-        Ok(())
-    }
-
-    pub fn cleanup_stale_working_files(&self) -> Result<()> {
-        for entry in fs::read_dir(&self.working)? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.is_file() {
-                fs::remove_file(&path)
-                    .with_context(|| format!("一時ファイルを削除できません: {}", path.display()))?;
-            } else if path.is_dir() {
-                fs::remove_dir_all(&path)
-                    .with_context(|| format!("一時フォルダを削除できません: {}", path.display()))?;
-            }
-        }
         Ok(())
     }
 
@@ -131,5 +119,31 @@ impl PortablePaths {
         fs::create_dir_all(&path)
             .with_context(|| format!("保存先を作成できません: {}", path.display()))?;
         Ok(path)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn initialization_preserves_completed_and_partial_recordings() {
+        let directory = tempfile::tempdir().unwrap();
+        let paths = PortablePaths::from_root(directory.path().to_owned()).unwrap();
+        fs::write(paths.working.join("PurpleCapture_saved.mp4"), b"completed").unwrap();
+        fs::write(
+            paths.working.join("PurpleCapture_crash.mp4.part"),
+            b"partial",
+        )
+        .unwrap();
+        drop(paths);
+        let reopened = PortablePaths::from_root(directory.path().to_owned()).unwrap();
+        assert_eq!(
+            fs::read(reopened.working.join("PurpleCapture_saved.mp4")).unwrap(),
+            b"completed"
+        );
+        assert_eq!(
+            fs::read(reopened.working.join("PurpleCapture_crash.mp4.part")).unwrap(),
+            b"partial"
+        );
     }
 }

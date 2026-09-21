@@ -1,3 +1,4 @@
+use super::clock::RecordingClock;
 use crate::models::AudioDevice;
 use anyhow::{Context, Result};
 use parking_lot::Mutex;
@@ -55,7 +56,7 @@ impl AudioPipeline {
         system_audio: bool,
         microphone: bool,
         microphone_id: Option<String>,
-        paused: Arc<AtomicBool>,
+        clock: Arc<RecordingClock>,
         encoder: Arc<Mutex<Option<VideoEncoder>>>,
     ) -> Result<Option<Self>> {
         if !system_audio && !microphone {
@@ -93,7 +94,7 @@ impl AudioPipeline {
             thread::Builder::new()
                 .name("purplecapture-audio-mixer".into())
                 .spawn(move || {
-                    mix_loop(receivers, encoder, paused, mixer_stop, mixer_error);
+                    mix_loop(receivers, encoder, clock, mixer_stop, mixer_error);
                 })
                 .context("音声ミキサースレッドを開始できません。")?,
         );
@@ -173,32 +174,52 @@ fn capture_loop(kind: InputKind, sender: SyncSender<Vec<u8>>, stop: Arc<AtomicBo
     Ok(())
 }
 
-fn mix_loop(
+pub(super) fn mix_loop(
     receivers: Vec<Receiver<Vec<u8>>>,
     encoder: Arc<Mutex<Option<VideoEncoder>>>,
-    paused: Arc<AtomicBool>,
+    clock: Arc<RecordingClock>,
     stop: Arc<AtomicBool>,
     error: Arc<Mutex<Option<String>>>,
 ) {
-    while !stop.load(Ordering::Acquire) {
-        let chunks: Vec<Vec<u8>> = receivers
-            .iter()
-            .filter_map(|receiver| receiver.recv_timeout(Duration::from_millis(80)).ok())
-            .collect();
-        if chunks.is_empty() || paused.load(Ordering::Acquire) {
+    let mut sent_frames = 0_u64;
+    loop {
+        let stopping = stop.load(Ordering::Acquire);
+        let target_frames = (clock.elapsed().as_secs_f64() * SAMPLE_RATE as f64) as u64;
+        if clock.is_paused() && !stopping {
+            for receiver in &receivers {
+                while receiver.try_recv().is_ok() {}
+            }
+            thread::sleep(Duration::from_millis(2));
             continue;
         }
+        let remaining = target_frames.saturating_sub(sent_frames);
+        if remaining < CHUNK_FRAMES as u64 && !stopping {
+            thread::sleep(Duration::from_millis(2));
+            continue;
+        }
+        if remaining == 0 && stopping {
+            break;
+        }
+        let chunks: Vec<Vec<u8>> = receivers
+            .iter()
+            .filter_map(|receiver| receiver.try_recv().ok())
+            .collect();
         let output = if chunks.len() == 1 {
             chunks[0].clone()
+        } else if chunks.is_empty() {
+            vec![0; CHUNK_BYTES]
         } else {
             mix_pcm_i16(&chunks)
         };
+        let frames = remaining.min(CHUNK_FRAMES as u64) as usize;
+        let output = &output[..frames * CHANNELS * BYTES_PER_SAMPLE];
         let mut guard = encoder.lock();
         let Some(encoder) = guard.as_mut() else { break };
-        if let Err(cause) = encoder.send_audio_buffer(&output, 0) {
+        if let Err(cause) = encoder.send_audio_buffer(output, 0) {
             *error.lock() = Some(format!("音声エンコードに失敗しました: {cause}"));
             break;
         }
+        sent_frames += frames as u64;
     }
 }
 

@@ -23,19 +23,16 @@ const meta = readMetadata();
 const names = artifactNames(meta);
 const distDirectory = path.join(root, "dist");
 fs.mkdirSync(distDirectory, { recursive: true });
-for (const entry of fs.readdirSync(distDirectory, { withFileTypes: true })) {
-  const isReleaseArtifact = entry.isFile() && (
-    entry.name.startsWith(`${meta.executableBaseName}-Portable-`)
-    || entry.name.startsWith(`${meta.executableBaseName}-Setup-`)
-  );
-  if (isReleaseArtifact) fs.rmSync(path.join(distDirectory, entry.name), { force: true });
+function clearBuildDirectory(target, allowedRoot) {
+  const resolved = path.resolve(target);
+  const allowed = path.resolve(allowedRoot) + path.sep;
+  if (!resolved.startsWith(allowed)) throw new Error(`Unsafe build cleanup path: ${resolved}`);
+  fs.rmSync(resolved, { recursive: true, force: true });
 }
-fs.rmSync(path.join(root, ".tmp", names.folder), { recursive: true, force: true });
-fs.rmSync(path.join(root, "src-tauri", "target", "release", "bundle", "nsis"), {
-  recursive: true,
-  force: true
-});
+clearBuildDirectory(path.join(root, ".tmp", names.folder), path.join(root, ".tmp"));
+clearBuildDirectory(path.join(root, "src-tauri", "target", "release", "bundle", "nsis"), path.join(root, "src-tauri", "target"));
 run(process.execPath, [path.join(root, "scripts", "sync-app-metadata.js")]);
+run(process.execPath, [path.join(root, "scripts", "generate-notices.js")]);
 run(process.execPath, [path.join(root, "scripts", "check-project.js")]);
 run(process.execPath, [path.join(root, "scripts", "prepare-icon.js")]);
 run(process.execPath, [path.join(root, "scripts", "build-frontend.js")]);
@@ -93,7 +90,7 @@ const entries = spawnSync("powershell.exe", [
 ], { cwd: root, encoding: "utf8" });
 if (entries.status !== 0) throw new Error(entries.stderr);
 const normalized = entries.stdout.trim().split(/\r?\n/).filter(Boolean).map((v) => v.replaceAll("\\", "/"));
-const expected = [`${names.folder}/${names.exe}`, `${names.folder}/README.txt`];
+const expected = [names.exe, "README.txt", "LICENSE", "THIRD_PARTY_NOTICES.md", "THIRD_PARTY_LICENSES.txt"].map((file) => `${names.folder}/${file}`);
 if (JSON.stringify(normalized.sort()) !== JSON.stringify(expected.sort())) {
   throw new Error(`ZIP content mismatch:\n${normalized.join("\n")}`);
 }

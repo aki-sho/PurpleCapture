@@ -1,7 +1,7 @@
 {
   "name": "purplecapture",
   "productName": "Purple Capture",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Windows 10・11向けのシンプルなポータブル画面録画アプリ",
   "private": true,
   "type": "module",
@@ -9,6 +9,8 @@
     "start": "npm run sync:metadata && npm run build:frontend && tauri dev",
     "build:frontend": "node scripts/build-frontend.js",
     "check": "node scripts/check-project.js",
+    "licenses": "node scripts/generate-notices.js",
+    "verify:release": "node scripts/verify-release.js",
     "sync:metadata": "node scripts/sync-app-metadata.js",
     "prepare:icon": "node scripts/prepare-icon.js",
     "package:portable": "npm run build:frontend && tauri build --no-bundle",

@@ -1,6 +1,6 @@
 # Purple Capture
 
-![Version](https://img.shields.io/badge/version-1.0.0-7C3AED?style=flat-square)
+![Version](https://img.shields.io/badge/version-1.0.1-7C3AED?style=flat-square)
 ![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?style=flat-square&logo=windows11&logoColor=white)
 ![Tauri](https://img.shields.io/badge/Tauri-2-FFC131?style=flat-square&logo=tauri&logoColor=111827)
 ![Rust](https://img.shields.io/badge/Rust-stable-CE422B?style=flat-square&logo=rust&logoColor=white)
@@ -27,7 +27,7 @@ Tauri 2、Rust、Vanilla JavaScript、WebView2で構成されており、FFmpeg�
 - Purple Capture内では共有選択を出さず、外部ブラウザで選択したタブ映像を受信
 - 共有映像をCPU Canvasへ合成した専用プレビューをWindows.Graphics.Captureで録画
 - 保存先設定、日時ファイル名、録画履歴
-- EXE横のPortableData、単一起動、異常終了後の一時ファイル整理
+- EXE横のPortableData、単一起動、未保存の録画データ保持と再保存
 
 
 内蔵ブラウザや専用のブラウザメニューはありません。Webサイトの閲覧は普段利用している
@@ -53,6 +53,16 @@ Chrome／Edgeなどで行い、録画したいタブだけをブラウザ標準�
 6. 録画中は、一時停止、再開、停止を操作できます。
 7. 録画を停止すると、設定した保存先へMP4ファイルが保存されます。
 8. 保存した録画は「録画履歴」から確認できます。
+
+### 保存に失敗した場合
+
+録画は削除せず、`PurpleCapture-PortableData/temp/working/`に保持します。
+「録画履歴」→「未保存の録画」→「保存先を選んで再保存」から、別の保存先を選んでください。
+既存の同名ファイルは上書きしません。アプリを再起動しても保管データは残ります。
+保存先ドライブが接続されていない場合は、起動時に既定の録画フォルダへ切り替えます。
+
+異常終了などでMP4の確定前に残った`.mp4.part`も削除しませんが、再生・復旧は保証できません。
+不要な保管データは「保管フォルダを開く」から確認して手動で整理してください。
 
 ### ブラウザタブを録画する場合
 
@@ -159,12 +169,12 @@ npm run release:portable
 
 ```text
 dist/
-├─ PurpleCapture-Portable-1.0.0.exe
-├─ PurpleCapture-Portable-1.0.0.exe.sha256
-├─ PurpleCapture-Portable-1.0.0.zip
-├─ PurpleCapture-Portable-1.0.0.zip.sha256
-├─ PurpleCapture-Setup-1.0.0.exe
-└─ PurpleCapture-Setup-1.0.0.exe.sha256
+├─ PurpleCapture-Portable-1.0.1.exe
+├─ PurpleCapture-Portable-1.0.1.exe.sha256
+├─ PurpleCapture-Portable-1.0.1.zip
+├─ PurpleCapture-Portable-1.0.1.zip.sha256
+├─ PurpleCapture-Setup-1.0.1.exe
+└─ PurpleCapture-Setup-1.0.1.exe.sha256
 ```
 
 ### ポータブル版
@@ -185,7 +195,7 @@ dist/
 PowerShellから次のコマンドを実行します。
 
 ```powershell
-Get-FileHash .\dist\PurpleCapture-Portable-1.0.0.zip -Algorithm SHA256
+Get-FileHash .\dist\PurpleCapture-Portable-1.0.1.zip -Algorithm SHA256
 ```
 
 表示されたハッシュ値と、配布されている`.sha256`ファイルの内容を比較してください。
@@ -250,6 +260,11 @@ PurpleCapture/
 JavaScriptの依存ライブラリは`package-lock.json`、Rustの依存ライブラリは`src-tauri/Cargo.lock`に固定されています。
 
 外部メディアバイナリやsidecarは使用していません。
+
+配布ZIPとインストーラーには`LICENSE`、`THIRD_PARTY_NOTICES.md`、`THIRD_PARTY_LICENSES.txt`を含めます。
+`npm run licenses`で依存のライセンス全文を再生成します。不足する原文がある場合はリリース生成を停止します。
+EXE単体にも同じ本文を埋め込み、「設定」→「利用条件・ライセンスを開く」から確認できます。
+公開前に`npm run verify:release`で利用条件の確定、EXEへの埋め込み、全配布物のSHA-256を確認します。
 
 Windows標準のMedia Foundation H.264 Encoderが使用可能かどうかは、PCのWindowsエディションや構成によって異なる場合があります。
 

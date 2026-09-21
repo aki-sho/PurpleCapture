@@ -12,6 +12,91 @@ use tauri::State;
 use tauri_plugin_dialog::{DialogExt, FilePath};
 
 #[tauri::command]
+pub fn open_license_documents(
+    webview: tauri::Webview,
+    paths: State<'_, Arc<crate::portable_paths::PortablePaths>>,
+) -> Result<(), String> {
+    ensure_main(&webview)?;
+    let directory = paths.root.join("licenses");
+    std::fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
+    for (name, contents) in [
+        ("LICENSE.txt", include_str!("../../../LICENSE")),
+        (
+            "THIRD_PARTY_NOTICES.md",
+            include_str!("../../../THIRD_PARTY_NOTICES.md"),
+        ),
+        (
+            "THIRD_PARTY_LICENSES.txt",
+            include_str!("../../../THIRD_PARTY_LICENSES.txt"),
+        ),
+    ] {
+        std::fs::write(directory.join(name), contents).map_err(|e| e.to_string())?;
+    }
+    tauri_plugin_opener::open_path(&directory, None::<&str>).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn pending_recordings(
+    webview: tauri::Webview,
+    paths: State<'_, Arc<crate::portable_paths::PortablePaths>>,
+) -> Result<Vec<crate::recovery::PendingRecording>, String> {
+    ensure_main(&webview)?;
+    crate::recovery::list(&paths.working).map_err(|cause| format!("{cause:#}"))
+}
+
+#[tauri::command]
+pub fn open_recovery_folder(
+    webview: tauri::Webview,
+    paths: State<'_, Arc<crate::portable_paths::PortablePaths>>,
+) -> Result<(), String> {
+    ensure_main(&webview)?;
+    tauri_plugin_opener::open_path(&paths.working, None::<&str>).map_err(|cause| cause.to_string())
+}
+
+#[tauri::command]
+pub async fn retry_recording_save(
+    webview: tauri::Webview,
+    app: tauri::AppHandle,
+    name: String,
+    paths: State<'_, Arc<crate::portable_paths::PortablePaths>>,
+    history: State<'_, Arc<HistoryStore>>,
+) -> Result<bool, String> {
+    ensure_main(&webview)?;
+    crate::recovery::validate_name(&name).map_err(|cause| cause.to_string())?;
+    let source = paths.working.join(&name);
+    if !source.is_file()
+        || source
+            .symlink_metadata()
+            .map_err(|e| e.to_string())?
+            .file_type()
+            .is_symlink()
+    {
+        return Err("未保存の録画が見つかりません。".into());
+    }
+    let Some(FilePath::Path(folder)) = app.dialog().file().blocking_pick_folder() else {
+        return Ok(false);
+    };
+    let history = history.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || -> anyhow::Result<bool> {
+        let destination = folder.join(&name);
+        let size = std::fs::metadata(&source)?.len();
+        crate::recovery::publish(&source, &destination)?;
+        history.add(HistoryEntry {
+            path: destination.to_string_lossy().into_owned(),
+            file_name: name,
+            target_name: "再保存した録画（時間情報なし）".into(),
+            created_at: chrono::Local::now().to_rfc3339(),
+            duration_seconds: 0,
+            size_bytes: size,
+        })?;
+        Ok(true)
+    })
+    .await
+    .map_err(|cause| cause.to_string())?
+    .map_err(|cause| format!("{cause:#}"))
+}
+
+#[tauri::command]
 pub fn bootstrap(
     webview: tauri::Webview,
     settings: State<'_, Arc<SettingsStore>>,
