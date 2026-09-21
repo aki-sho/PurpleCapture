@@ -106,6 +106,7 @@ pub fn bootstrap(
     ensure_main(&webview)?;
     Ok(BootstrapData {
         settings: settings.get(),
+        settings_warning: settings.warning(),
         recording: recording.status(),
         share: share.status(),
     })

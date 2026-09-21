@@ -146,6 +146,7 @@ impl ShareReport {
 #[serde(rename_all = "camelCase")]
 pub struct BootstrapData {
     pub settings: AppSettings,
+    pub settings_warning: Option<String>,
     pub recording: RecordingStatus,
     pub share: ShareState,
 }

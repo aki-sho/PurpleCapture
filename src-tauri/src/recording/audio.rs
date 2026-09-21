@@ -164,8 +164,12 @@ fn capture_loop(kind: InputKind, sender: SyncSender<Vec<u8>>, stop: Arc<AtomicBo
         capture.read_from_device_to_deque(&mut queue)?;
         while queue.len() >= CHUNK_BYTES {
             let chunk: Vec<u8> = queue.drain(..CHUNK_BYTES).collect();
-            if sender.try_send(chunk).is_err() {
-                break;
+            match sender.try_send(chunk) {
+                Ok(()) | Err(mpsc::TrySendError::Full(_)) => {}
+                Err(mpsc::TrySendError::Disconnected(_)) => {
+                    let _ = client.stop_stream();
+                    return Ok(());
+                }
             }
         }
         let _ = event.wait_for_event(200);
@@ -200,17 +204,7 @@ pub(super) fn mix_loop(
         if remaining == 0 && stopping {
             break;
         }
-        let chunks: Vec<Vec<u8>> = receivers
-            .iter()
-            .filter_map(|receiver| receiver.try_recv().ok())
-            .collect();
-        let output = if chunks.len() == 1 {
-            chunks[0].clone()
-        } else if chunks.is_empty() {
-            vec![0; CHUNK_BYTES]
-        } else {
-            mix_pcm_i16(&chunks)
-        };
+        let output = mix_available(&receivers);
         let frames = remaining.min(CHUNK_FRAMES as u64) as usize;
         let output = &output[..frames * CHANNELS * BYTES_PER_SAMPLE];
         let mut guard = encoder.lock();
@@ -220,6 +214,15 @@ pub(super) fn mix_loop(
             break;
         }
         sent_frames += frames as u64;
+    }
+}
+
+fn mix_available(receivers: &[Receiver<Vec<u8>>]) -> Vec<u8> {
+    let chunks: Vec<Vec<u8>> = receivers.iter().filter_map(|r| r.try_recv().ok()).collect();
+    if chunks.is_empty() {
+        vec![0; CHUNK_BYTES]
+    } else {
+        mix_pcm_i16(&chunks)
     }
 }
 
@@ -235,4 +238,41 @@ fn mix_pcm_i16(chunks: &[Vec<u8>]) -> Vec<u8> {
         result[offset..offset + 2].copy_from_slice(&mixed.to_le_bytes());
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stalled_first_input_preserves_every_healthy_chunk() {
+        let (_stalled, first) = mpsc::sync_channel(8);
+        let (healthy, second) = mpsc::sync_channel(8);
+        let inputs = [first, second];
+        for value in 1_u8..=100 {
+            let chunk = vec![value; CHUNK_BYTES];
+            healthy.send(chunk.clone()).unwrap();
+            assert_eq!(mix_available(&inputs), chunk);
+        }
+        drop(healthy);
+        assert_eq!(mix_available(&inputs), vec![0; CHUNK_BYTES]);
+    }
+
+    #[test]
+    fn mixing_clamps_instead_of_wrapping() {
+        assert_eq!(
+            mix_pcm_i16(&[
+                30000_i16.to_le_bytes().to_vec(),
+                10000_i16.to_le_bytes().to_vec()
+            ]),
+            i16::MAX.to_le_bytes()
+        );
+        assert_eq!(
+            mix_pcm_i16(&[
+                (-30000_i16).to_le_bytes().to_vec(),
+                (-10000_i16).to_le_bytes().to_vec()
+            ]),
+            i16::MIN.to_le_bytes()
+        );
+    }
 }

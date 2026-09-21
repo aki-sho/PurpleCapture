@@ -50,7 +50,7 @@ impl PortablePaths {
         Self::from_root(root)
     }
 
-    fn from_root(root: PathBuf) -> Result<Arc<Self>> {
+    pub(crate) fn from_root(root: PathBuf) -> Result<Arc<Self>> {
         let paths = Self {
             settings: root.join("settings"),
             data: root.join("data"),
@@ -118,6 +118,11 @@ impl PortablePaths {
         }
         fs::create_dir_all(&path)
             .with_context(|| format!("保存先を作成できません: {}", path.display()))?;
+        let probe = tempfile::Builder::new()
+            .prefix(".purplecapture-write-check-")
+            .tempfile_in(&path)
+            .with_context(|| format!("保存先へ書き込めません: {}", path.display()))?;
+        probe.close()?;
         Ok(path)
     }
 }

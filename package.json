@@ -37,5 +37,6 @@
     "initialHeight": 720,
     "minWidth": 850,
     "minHeight": 600
-  }
+  },
+  "license": "UNLICENSED"
 }

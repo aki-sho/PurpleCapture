@@ -4,7 +4,7 @@ version = "1.0.1"
 description = "Windows 10・11向けのシンプルなポータブル画面録画アプリ"
 authors = ["Purple Capture contributors"]
 edition = "2024"
-license = "LicenseRef-Proprietary-Undecided"
+license-file = "../LICENSE"
 
 [lib]
 name = "purplecapture_lib"

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import { spawnSync } from "node:child_process";
 import { artifactNames, readMetadata, root } from "./metadata.js";
 
 const names = artifactNames(readMetadata());
@@ -20,4 +21,13 @@ for (const name of ["LICENSE", "THIRD_PARTY_NOTICES.md", "THIRD_PARTY_LICENSES.t
   const content = fs.readFileSync(path.join(root, name));
   if (!exe.includes(content)) throw new Error(`The executable does not embed the current ${name}`);
 }
-console.log("Release verified: finalized license, embedded notices and all SHA-256 hashes match.");
+for (const asset of [names.exe, names.setup]) {
+  const file = path.join(root, "dist", asset).replaceAll("'", "''");
+  const verification = spawnSync("powershell.exe", ["-NoProfile", "-Command",
+    `$s = Get-AuthenticodeSignature -LiteralPath '${file}'; if ($s.Status -ne 'Valid' -or $null -eq $s.TimeStamperCertificate) { Write-Error 'A trusted, timestamped code signature is required for publication.'; exit 1 }; $s.SignerCertificate.Subject`
+  ], { encoding: "utf8" });
+  if (verification.error) throw verification.error;
+  if (verification.status !== 0) throw new Error(`Signature verification failed: ${asset}\n${verification.stderr}`);
+  console.log(`${asset}: ${verification.stdout.trim()}`);
+}
+console.log("Release verified: finalized license, embedded notices, SHA-256 hashes and trusted timestamped signatures match.");
