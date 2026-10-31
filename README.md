@@ -1,6 +1,8 @@
 # Purple Capture
 
-![Version](https://img.shields.io/badge/version-1.0.1-7C3AED?style=flat-square)
+> 最新バージョン: 1.0.2（2026-10-31）。ローカルの未公開変更を反映し、ソースと配布物を揃えた同期リリースです。
+
+![Version](https://img.shields.io/badge/version-1.0.2-7C3AED?style=flat-square)
 ![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?style=flat-square&logo=windows11&logoColor=white)
 ![Tauri](https://img.shields.io/badge/Tauri-2-FFC131?style=flat-square&logo=tauri&logoColor=111827)
 ![Rust](https://img.shields.io/badge/Rust-stable-CE422B?style=flat-square&logo=rust&logoColor=white)
@@ -66,6 +68,14 @@ Chrome／Edgeなどで行い、録画したいタブだけをブラウザ標準�
 異常終了などでMP4の確定前に残った`.mp4.part`も削除しませんが、再生・復旧は保証できません。
 不要な保管データは「保管フォルダを開く」から確認して手動で整理してください。
 
+録画開始時は一時録画先と保存先の両方に最低256 MBの空き容量が必要です。
+録画中も1秒ごとに容量を確認し、一時録画用の余裕と、保存時に作成するコピー分の容量が
+不足した場合や容量を確認できない場合は録画を停止します。保存に失敗したデータは上記の手順で再保存できます。
+
+設定と録画履歴は`.json.bak`へ直前の保存内容をバックアップします。
+起動時に破損を検出すると、元ファイルを`.json.corrupt-…`へ退避してバックアップから復旧し、
+画面に通知します。バックアップも利用できない場合は既定値で再作成します。録画ファイル自体は削除しません。
+
 ### ブラウザタブを録画する場合
 
 1. 「共有タブ」を選択します。
@@ -73,6 +83,9 @@ Chrome／Edgeなどで行い、録画したいタブだけをブラウザ標準�
 3. Purple Captureへ戻り、「録画を開始」を押します。
 
 ブラウザタブの音声を録音する場合は、「システム音声」をオンにしてください。
+
+共有を停止すると、その共有セッションのトークンは失効します。再開する場合はPurple Captureから
+「タブを共有」を操作してください。以前のブラウザ共有ページは再利用できません。
 
 ## 録画対象
 
@@ -171,12 +184,12 @@ npm run release:portable
 
 ```text
 dist/
-├─ PurpleCapture-Portable-1.0.1.exe
-├─ PurpleCapture-Portable-1.0.1.exe.sha256
-├─ PurpleCapture-Portable-1.0.1.zip
-├─ PurpleCapture-Portable-1.0.1.zip.sha256
-├─ PurpleCapture-Setup-1.0.1.exe
-└─ PurpleCapture-Setup-1.0.1.exe.sha256
+├─ PurpleCapture-Portable-1.0.2.exe
+├─ PurpleCapture-Portable-1.0.2.exe.sha256
+├─ PurpleCapture-Portable-1.0.2.zip
+├─ PurpleCapture-Portable-1.0.2.zip.sha256
+├─ PurpleCapture-Setup-1.0.2.exe
+└─ PurpleCapture-Setup-1.0.2.exe.sha256
 ```
 
 ### ポータブル版
@@ -197,7 +210,7 @@ dist/
 PowerShellから次のコマンドを実行します。
 
 ```powershell
-Get-FileHash .\dist\PurpleCapture-Portable-1.0.1.zip -Algorithm SHA256
+Get-FileHash .\dist\PurpleCapture-Portable-1.0.2.zip -Algorithm SHA256
 ```
 
 表示されたハッシュ値と、配布されている`.sha256`ファイルの内容を比較してください。

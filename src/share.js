@@ -121,10 +121,12 @@ function startFrameRendering(metadata) {
   scheduleFrame(generation);
 }
 
-async function report(active, metadata = null) {
+async function report(active, metadata = null, sessionToken = session?.token) {
+  if (!sessionToken) return;
   const settings = active && videoTrack ? videoTrack.getSettings() : {};
   return invoke("share_report_state", {
     report: {
+      sessionToken,
       active,
       title: active ? (metadata?.title || videoTrack?.label || "共有タブ") : "共有タブ",
       displaySurface: active ? (metadata?.displaySurface || settings.displaySurface || "unknown") : "",
@@ -145,15 +147,19 @@ function closePeer() {
   peer = null;
 }
 
-async function signal(path, method = "GET", body = null) {
-  if (!session) throw new Error("共有セッションがありません。");
-  const response = await fetch(`${session.apiBase}/${path}/${session.token}`, {
+async function signal(path, method = "GET", body = null, targetSession = session) {
+  if (!targetSession) throw new Error("共有セッションがありません。");
+  const response = await fetch(`${targetSession.apiBase}/${path}/${targetSession.token}`, {
     method,
     headers: body ? { "Content-Type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
     cache: "no-store"
   });
-  if (!response.ok) throw new Error(`ローカル共有接続エラー (${response.status})`);
+  if (!response.ok) {
+    const error = new Error(`ローカル共有接続エラー (${response.status})`);
+    error.sessionExpired = response.status === 410;
+    throw error;
+  }
   return response.json();
 }
 
@@ -172,36 +178,39 @@ function waitForIce(connection) {
 }
 
 async function stopLocal({ notifyRust = true, notifyServer = true } = {}) {
+  const stoppedSession = session;
   const previous = stream;
   stream = null;
   videoTrack = null;
   cancelFrameRendering();
   video.srcObject = null;
   closePeer();
+  currentRevision = -1;
   if (notifyServer && session) {
-    try { await signal("stop", "POST", {}); }
+    try { await signal("stop", "POST", {}, stoppedSession); }
     catch { /* 終了中は無視 */ }
   }
   releaseStream(previous);
   renderSharing(false);
   if (notifyRust) {
-    try { await report(false); }
+    try { await report(false, null, stoppedSession?.token); }
     catch (error) { showError(readableError(error)); }
   }
 }
 
-async function receiveOffer(state) {
+async function receiveOffer(state, targetSession) {
   closePeer();
   currentRevision = state.revision;
   const connection = new RTCPeerConnection({ iceServers: [] });
   peer = connection;
   connection.addEventListener("track", async (event) => {
-    if (peer !== connection) return;
+    if (peer !== connection || session !== targetSession) return;
     const remoteStream = event.streams[0] || new MediaStream([event.track]);
     stream = remoteStream;
     videoTrack = event.track;
     video.srcObject = remoteStream;
     await video.play();
+    if (peer !== connection || session !== targetSession) return;
     startFrameRendering(state);
     event.track.addEventListener("ended", () => {
       if (videoTrack === event.track) stopLocal({ notifyServer: false });
@@ -217,20 +226,28 @@ async function receiveOffer(state) {
   const answer = await connection.createAnswer();
   await connection.setLocalDescription(answer);
   await waitForIce(connection);
-  await signal("answer", "POST", { sdp: connection.localDescription.sdp });
+  if (peer !== connection || session !== targetSession) return;
+  await signal("answer", "POST", { sdp: connection.localDescription.sdp }, targetSession);
 }
 
 async function pollSession() {
   if (polling || !session) return;
   polling = true;
+  const polledSession = session;
   try {
-    const state = await signal("session");
+    const state = await signal("session", "GET", null, polledSession);
+    if (session !== polledSession) return;
     if (state.active && state.offer && state.revision !== currentRevision) {
-      await receiveOffer(state);
+      await receiveOffer(state, polledSession);
     } else if (!state.active && stream) {
       await stopLocal({ notifyServer: false });
     }
-  } catch {
+  } catch (error) {
+    if (error.sessionExpired && session === polledSession) {
+      await stopLocal({ notifyServer: false });
+      if (session === polledSession) session = null;
+      return;
+    }
     if (stream) {
       showError("外部ブラウザとのローカル接続を確認しています。");
     }
@@ -244,6 +261,8 @@ async function launchBrowser() {
   launchButton.disabled = true;
   changeButton.disabled = true;
   try {
+    await stopLocal();
+    session = null;
     session = await invoke("share_launch_browser", { browser: browserSelect.value });
     waitingMessage.classList.remove("hidden");
   } catch (error) {

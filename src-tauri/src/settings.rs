@@ -1,7 +1,7 @@
-use crate::{models::AppSettings, portable_paths::PortablePaths};
-use anyhow::{Context, Result, bail};
+use crate::{json_store, models::AppSettings, portable_paths::PortablePaths};
+use anyhow::{Result, bail};
 use parking_lot::RwLock;
-use std::{fs, io::Write, sync::Arc};
+use std::sync::Arc;
 
 pub struct SettingsStore {
     paths: Arc<PortablePaths>,
@@ -12,26 +12,27 @@ pub struct SettingsStore {
 impl SettingsStore {
     pub fn load(paths: Arc<PortablePaths>) -> Result<Self> {
         let file = paths.settings.join("settings.json");
-        let mut warning = None;
-        let mut value = if file.exists() {
-            serde_json::from_slice(&fs::read(&file)?)
-                .with_context(|| format!("設定ファイルが壊れています: {}", file.display()))?
-        } else {
-            AppSettings {
+        let loaded = json_store::load(
+            &file,
+            "設定",
+            || AppSettings {
                 save_directory: paths.recordings.to_string_lossy().into_owned(),
                 quality: "standard".into(),
                 fps: 30,
                 system_audio: true,
                 microphone: false,
                 microphone_id: None,
-            }
-        };
-        Self::validate(&value)?;
+            },
+            Self::validate,
+        )?;
+        let mut warning = loaded.warning;
+        let mut value = loaded.value;
         // A disconnected destination must not prevent access to retained recordings.
         value.save_directory = match paths.ensure_absolute_directory(&value.save_directory) {
             Ok(directory) => directory,
             Err(cause) => {
-                warning = Some("保存先が利用できないため、このPCの既定の録画フォルダへ切り替えました。設定から保存先を選び直してください。".into());
+                let notice = "保存先が利用できないため、このPCの既定の録画フォルダへ切り替えました。設定から保存先を選び直してください。";
+                warning = Some(match warning { Some(previous) => format!("{previous} {notice}"), None => notice.into() });
                 paths.log(
                     "WARN",
                     format!("Save directory unavailable; using local recordings: {cause:#}"),
@@ -46,6 +47,9 @@ impl SettingsStore {
             value: RwLock::new(value),
             warning,
         };
+        if let Some(warning) = &store.warning {
+            store.paths.log("WARN", warning);
+        }
         store.persist()?;
         Ok(store)
     }
@@ -96,19 +100,32 @@ impl SettingsStore {
     }
 
     fn persist_value(&self, value: &AppSettings) -> Result<()> {
-        let output = serde_json::to_vec_pretty(value)?;
         let target = self.paths.settings.join("settings.json");
-        let mut staged = tempfile::NamedTempFile::new_in(&self.paths.settings)?;
-        staged.write_all(&output)?;
-        staged.as_file().sync_all()?;
-        staged.persist(target).map_err(|error| error.error)?;
-        Ok(())
+        json_store::save(&target, value)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+
+    #[test]
+    fn invalid_settings_restore_validated_backup_without_blocking_startup() {
+        let root = tempfile::tempdir().unwrap();
+        let paths = PortablePaths::from_root(root.path().to_owned()).unwrap();
+        let store = SettingsStore::load(paths.clone()).unwrap();
+        let mut invalid = store.get();
+        invalid.fps = 500;
+        fs::write(
+            paths.settings.join("settings.json"),
+            serde_json::to_vec(&invalid).unwrap(),
+        )
+        .unwrap();
+        let recovered = SettingsStore::load(paths).unwrap();
+        assert_eq!(recovered.get().fps, 30);
+        assert!(recovered.warning().is_some());
+    }
     #[test]
     fn unavailable_destination_does_not_block_startup_or_reselection() {
         let root = tempfile::tempdir().unwrap();

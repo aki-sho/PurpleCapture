@@ -100,6 +100,7 @@ pub async fn retry_recording_save(
 pub fn bootstrap(
     webview: tauri::Webview,
     settings: State<'_, Arc<SettingsStore>>,
+    history: State<'_, Arc<HistoryStore>>,
     recording: State<'_, Arc<RecordingManager>>,
     share: State<'_, Arc<ShareManager>>,
 ) -> Result<BootstrapData, String> {
@@ -107,6 +108,7 @@ pub fn bootstrap(
     Ok(BootstrapData {
         settings: settings.get(),
         settings_warning: settings.warning(),
+        history_warning: history.warning(),
         recording: recording.status(),
         share: share.status(),
     })

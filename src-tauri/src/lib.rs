@@ -1,5 +1,6 @@
 mod commands;
 mod history;
+mod json_store;
 mod legacy_cleanup;
 mod models;
 mod portable_paths;
@@ -80,6 +81,28 @@ pub fn run() {
                 .data_directory(paths.webview.clone())
                 .build()?;
             legacy_cleanup::remove_empty_default_appdata(&paths);
+            let recording = Arc::downgrade(app.state::<Arc<RecordingManager>>().inner());
+            let shutting_down = app.state::<Arc<AtomicBool>>().inner().clone();
+            let handle = app.handle().clone();
+            std::thread::Builder::new()
+                .name("purplecapture-storage-monitor".into())
+                .spawn(move || {
+                    while !shutting_down.load(Ordering::Acquire) {
+                        std::thread::sleep(std::time::Duration::from_secs(1));
+                        if shutting_down.load(Ordering::Acquire) {
+                            break;
+                        }
+                        let Some(recording) = recording.upgrade() else {
+                            break;
+                        };
+                        if let Some(status) = recording.monitor_storage() {
+                            handle
+                                .state::<Arc<ShareManager>>()
+                                .set_recording_mode(&handle, false);
+                            let _ = handle.emit("recording-state", &status);
+                        }
+                    }
+                })?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

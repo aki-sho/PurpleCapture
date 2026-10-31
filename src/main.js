@@ -23,12 +23,13 @@ async function initialize() {
     state.settings = bootstrap.settings;
     state.recording = bootstrap.recording;
     state.share = bootstrap.share;
-    if (bootstrap.settingsWarning) {
-      showToast(bootstrap.settingsWarning, "error", 12000);
+    for (const [page, message] of [["settings", bootstrap.settingsWarning], ["history", bootstrap.historyWarning]]) {
+      if (!message) continue;
+      showToast(message, "error", 12000);
       const warning = document.createElement("p");
       warning.className = "alert";
-      warning.textContent = bootstrap.settingsWarning;
-      document.querySelector("#page-settings .page-header").after(warning);
+      warning.textContent = message;
+      document.querySelector(`#page-${page} .page-header`).after(warning);
     }
   } catch (error) {
     document.querySelector("#recording-error").textContent = String(error);

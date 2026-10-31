@@ -122,6 +122,9 @@ impl ShareManager {
     }
 
     pub fn launch_browser(&self, browser: &str) -> Result<ShareSessionInfo> {
+        if let Some(server) = self.server.lock().as_ref() {
+            server.stop_session();
+        }
         let info = self.ensure_server()?;
         match browser {
             "default" => tauri_plugin_opener::open_url(&info.sender_url, None::<&str>),
@@ -141,7 +144,18 @@ impl ShareManager {
 
     pub fn report(&self, app: &AppHandle, report: ShareReport) -> Result<ShareState> {
         report.validate()?;
+        let server = self.server.lock();
+        let Some(server) = server.as_ref() else {
+            return Ok(self.status());
+        };
+        // Late callbacks from an expired peer must not alter its replacement.
+        if server.token() != report.session_token || (report.active && server.is_revoked()) {
+            return Ok(self.status());
+        }
         let mut state = self.state.lock();
+        if !report.active && state.active {
+            server.stop_session();
+        }
         state.window_open = app.get_webview_window(SHARE_WINDOW_LABEL).is_some();
         state.active = report.active;
         if report.active {
@@ -253,6 +267,11 @@ impl ShareManager {
 
     fn ensure_server(&self) -> Result<ShareSessionInfo> {
         let mut server = self.server.lock();
+        if server.as_ref().is_some_and(ShareServer::is_revoked) {
+            if let Some(mut expired) = server.take() {
+                expired.shutdown();
+            }
+        }
         if server.is_none() {
             *server = Some(ShareServer::start()?);
         }
@@ -270,6 +289,23 @@ impl ShareManager {
         if let Some(mut server) = self.server.lock().take() {
             server.shutdown();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stopped_session_is_replaced_with_a_new_token() {
+        let root = tempfile::tempdir().unwrap();
+        let paths = PortablePaths::from_root(root.path().to_owned()).unwrap();
+        let manager = ShareManager::new(paths);
+        let first = manager.session_info().unwrap();
+        manager.server.lock().as_ref().unwrap().stop_session();
+        let second = manager.session_info().unwrap();
+        assert_ne!(first.token, second.token);
+        assert_eq!(manager.session_info().unwrap().token, second.token);
     }
 }
 

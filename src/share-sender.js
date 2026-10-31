@@ -15,6 +15,7 @@ let peer = null;
 let answerTimer = null;
 let sessionTimer = null;
 let connectionFailures = 0;
+let sessionExpired = false;
 
 function options() {
   return {
@@ -39,6 +40,12 @@ async function request(path, method = "GET", body = null) {
     body: body ? JSON.stringify(body) : undefined,
     cache: "no-store"
   });
+  if (response.status === 410) {
+    sessionExpired = true;
+    startButton.disabled = true;
+    changeButton.disabled = true;
+    throw new Error("共有セッションは終了しました。Purple Captureからタブを共有し直してください。");
+  }
   if (!response.ok) throw new Error(`ローカル接続エラー (${response.status})`);
   return response.json();
 }
@@ -156,6 +163,10 @@ async function connect(nextStream) {
 }
 
 async function startShare() {
+  if (sessionExpired) {
+    showError(new Error("Purple Captureからタブを共有し直してください。"));
+    return;
+  }
   clearError();
   startButton.disabled = true;
   changeButton.disabled = true;
@@ -173,12 +184,13 @@ async function startShare() {
     setSharing(true);
     await connect(stream);
   } catch (error) {
-    release(nextStream);
+    if (nextStream && stream === nextStream) await stopShare(false);
+    else release(nextStream);
     if (!stream) setSharing(false);
     showError(error);
   } finally {
-    startButton.disabled = false;
-    changeButton.disabled = false;
+    startButton.disabled = sessionExpired;
+    changeButton.disabled = sessionExpired;
   }
 }
 

@@ -2,6 +2,7 @@ use super::{
     audio::AudioPipeline,
     capture::{CaptureFlags, CaptureHandler},
     clock::RecordingClock,
+    storage,
 };
 use crate::{
     history::HistoryStore,
@@ -84,9 +85,7 @@ impl RecordingManager {
         if self.inner.lock().active.is_some() {
             bail!("すでに録画中です。");
         }
-        if fs2::available_space(&save_directory).unwrap_or(u64::MAX) < 256 * 1024 * 1024 {
-            bail!("保存先の空き容量が不足しています（最低256 MB必要です）。");
-        }
+        storage::check_start(&self.paths.working, &save_directory)?;
         let timestamp = Local::now();
         let stem = format!("PurpleCapture_{}", timestamp.format("%Y-%m-%d_%H-%M-%S"));
         let working_path = self
@@ -314,6 +313,23 @@ impl RecordingManager {
             target_name: active.target_name.clone(),
             error: audio_error,
         }
+    }
+
+    pub fn monitor_storage(&self) -> Option<RecordingStatus> {
+        let _operation = self.operation.try_lock()?;
+        let reason = {
+            let inner = self.inner.lock();
+            let active = inner.active.as_ref()?;
+            storage::check_recording(&active.working_path, &active.final_path).err()?
+        };
+        let active = self.inner.lock().active.take()?;
+        let message = match self.finalize(active, false) {
+            Ok(()) => format!("{reason:#} 録画を安全に停止して保存しました。"),
+            Err(cause) => format!("{reason:#} 録画を停止しました。終了処理: {cause:#}"),
+        };
+        self.paths.log("WARN", &message);
+        self.inner.lock().last_error = Some(message);
+        Some(self.status())
     }
 
     fn reap_finished(&self) {

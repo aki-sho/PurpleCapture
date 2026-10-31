@@ -98,6 +98,7 @@ impl Default for ShareState {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ShareReport {
+    pub session_token: String,
     pub active: bool,
     pub title: String,
     pub display_surface: String,
@@ -124,6 +125,14 @@ pub struct ShareBrowserOption {
 
 impl ShareReport {
     pub fn validate(&self) -> anyhow::Result<()> {
+        if self.session_token.len() != 32
+            || !self
+                .session_token
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit())
+        {
+            anyhow::bail!("共有セッションの指定が不正です。");
+        }
         if self.title.len() > 512 {
             anyhow::bail!("共有対象名が長すぎます。");
         }
@@ -147,6 +156,7 @@ impl ShareReport {
 pub struct BootstrapData {
     pub settings: AppSettings,
     pub settings_warning: Option<String>,
+    pub history_warning: Option<String>,
     pub recording: RecordingStatus,
     pub share: ShareState,
 }
