@@ -19,15 +19,16 @@ export function readMetadata() {
   };
 }
 
-export function artifactNames(meta) {
-  const prefix = `${meta.executableBaseName}-Portable-${meta.version}`;
+export function artifactNames(meta, { unsignedPreview = false } = {}) {
+  const suffix = unsignedPreview ? "-Unsigned" : "";
+  const prefix = `${meta.executableBaseName}-Portable-${meta.version}${suffix}`;
   return {
     exe: `${prefix}.exe`,
     exeHash: `${prefix}.exe.sha256`,
     zip: `${prefix}.zip`,
     zipHash: `${prefix}.zip.sha256`,
     folder: prefix,
-    setup: `${meta.executableBaseName}-Setup-${meta.version}.exe`,
-    setupHash: `${meta.executableBaseName}-Setup-${meta.version}.exe.sha256`
+    setup: `${meta.executableBaseName}-Setup-${meta.version}${suffix}.exe`,
+    setupHash: `${meta.executableBaseName}-Setup-${meta.version}${suffix}.exe.sha256`
   };
 }

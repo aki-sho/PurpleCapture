@@ -21,15 +21,17 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          & node --test scripts/test-release-signature.js
+          if ($LASTEXITCODE -ne 0) { throw 'Release signature policy tests failed' }
           & 'npm.cmd' 'run' 'build:frontend'
           if ($LASTEXITCODE -ne 0) { throw 'Frontend preparation failed' }
           & cargo test --manifest-path src-tauri/Cargo.toml --locked
           if ($LASTEXITCODE -ne 0) { throw 'Rust tests failed' }
           & 'npm.cmd' 'run' 'test:share'
           if ($LASTEXITCODE -ne 0) { throw 'Verification or packaging step failed' }
-          & 'npm.cmd' 'run' 'release:portable'
+          & 'npm.cmd' 'run' 'release:portable' '--' '--unsigned-preview'
           if ($LASTEXITCODE -ne 0) { throw 'Verification or packaging step failed' }
-          & 'npm.cmd' 'run' 'verify:release'
+          & 'npm.cmd' 'run' 'verify:release' '--' '--unsigned-preview'
           if ($LASTEXITCODE -ne 0) { throw 'Verification or packaging step failed' }
           $out = 'github-sync-distribution'
           New-Item -ItemType Directory -Path $out -Force | Out-Null

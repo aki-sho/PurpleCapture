@@ -19,9 +19,11 @@ function writeHash(file, output) {
   fs.writeFileSync(output, `${sha256(file)}  ${path.basename(file)}\n`, "ascii");
 }
 
+const unsignedPreview = process.argv.includes("--unsigned-preview");
+if (process.argv.slice(2).some((arg) => arg !== "--unsigned-preview")) throw new Error("Unknown release argument");
 const meta = readMetadata();
-const names = artifactNames(meta);
-const distDirectory = path.join(root, "dist");
+const names = artifactNames(meta, { unsignedPreview });
+const distDirectory = path.join(root, unsignedPreview ? "dist-unsigned" : "dist");
 fs.mkdirSync(distDirectory, { recursive: true });
 function clearBuildDirectory(target, allowedRoot) {
   const resolved = path.resolve(target);
@@ -44,7 +46,7 @@ run(process.execPath, [
 
 const builtExe = path.join(root, "src-tauri", "target", "release", `${meta.executableBaseName}.exe`);
 if (!fs.existsSync(builtExe)) throw new Error(`Release EXE not found: ${builtExe}`);
-const layout = preparePortableLayout(builtExe);
+const layout = preparePortableLayout(builtExe, { unsignedPreview });
 const exe = path.join(layout.dist, names.exe);
 const zip = path.join(layout.dist, names.zip);
 writeHash(exe, path.join(layout.dist, names.exeHash));

@@ -13,6 +13,11 @@
 
 **Purple Capture** は、Windows 10・11（64ビット）向けのポータブル画面録画アプリです。
 
+1.0.2のGitHubプレビュー配布物は未署名です。ファイル名の`-Unsigned`が目印です。
+`npm run release:portable -- --unsigned-preview`で通常の`dist`と分けて`dist-unsigned`へ作成し、
+`npm run verify:release -- --unsigned-preview`で内容・ハッシュ・署名状態を検査します。
+通常の`verify:release`は、信頼済みでタイムスタンプ付きの署名を引き続き必須とします。
+
 モニター、開いているアプリウィンドウ、Chrome／Edgeで共有したブラウザタブを選択し、H.264／MP4形式で録画できます。
 
 Tauri 2、Rust、Vanilla JavaScript、WebView2で構成されており、FFmpegなどの外部EXEには依存しません。

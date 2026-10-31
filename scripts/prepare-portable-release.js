@@ -2,10 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { artifactNames, readMetadata, root } from "./metadata.js";
 
-export function preparePortableLayout(sourceExe) {
+export function preparePortableLayout(sourceExe, { unsignedPreview = false } = {}) {
   const meta = readMetadata();
-  const names = artifactNames(meta);
-  const dist = path.join(root, "dist");
+  const names = artifactNames(meta, { unsignedPreview });
+  const dist = path.join(root, unsignedPreview ? "dist-unsigned" : "dist");
   const stage = path.join(root, ".tmp", names.folder);
   if (!path.resolve(stage).startsWith(path.resolve(root, ".tmp") + path.sep)) throw new Error("Unsafe staging directory");
   fs.rmSync(stage, { recursive: true, force: true });
@@ -15,6 +15,7 @@ export function preparePortableLayout(sourceExe) {
     fs.copyFileSync(path.join(root, file), path.join(stage, file));
   }
   const readme = `${meta.productName} ポータブル版 ${meta.version}
+${unsignedPreview ? "\n未署名のプレビュー版です。信頼済みの発行元署名はありません。\n" : ""}
 
 本配布物はインストーラーを使用しないポータブル版です。
 
